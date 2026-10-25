@@ -55,55 +55,67 @@ movie-recommender/
 - [x] Create virtual environment & install all dependencies (including scikit-surprise)
 - [x] Verify data loading works (9,742 movies, 100,836 ratings, 610 users)
 
-### Day 2 - Data Cleaning & EDA 🔄
-- [ ] Run EDA notebook to generate insights
-- [ ] Build `src/preprocessing.py` with cleaning logic
-- [ ] Merge movies + ratings, filter movies with ≥5 ratings
-- [ ] Handle missing values, parse genres
-- [ ] Build user-item sparse matrix
-- [ ] Train/test split by user (for CF evaluation)
-- [ ] Save cleaned data to `data/processed/`
+### Day 2 - Data Cleaning & EDA ✅
+- [x] Run EDA notebook to generate insights (7 visualizations saved)
+- [x] Build `src/preprocessing.py` with cleaning logic
+- [x] Filter movies with ≥5 ratings, users with ≥5 ratings
+- [x] Handle missing values, parse genres, extract years
+- [x] Build user-item sparse matrix (610 × 3,650, 95.9% sparsity)
+- [x] Train/test split by user (hold out last 20% per user)
+- [x] Save cleaned data to `data/processed/` (parquet + joblib)
+- [x] Create `notebooks/02_preprocessing.ipynb` documenting pipeline
+- [x] Add `tests/test_preprocessing.py` (7 tests, all passing)
 
-### Day 3 - User-Item Matrix & Train/Test Split
-- [ ] Convert to surprise `Dataset` format
-- [ ] Create trainset/testset split (time-based or user-based)
-- [ ] Save splits for reproducible training
+### Day 3 - Model Training (CF) ✅
+- [x] Train SVD (matrix factorization) with grid search (n_factors=150, n_epochs=30, lr=0.01, reg=0.1)
+- [x] Train k-NN (item-based) as baseline (k=60, min_k=3, sim=MSD)
+- [x] Hyperparameter tuning via GridSearchCV (3-fold CV)
+- [x] Save best models (`algo_svd.pkl`, `algo_knn.pkl`)
+- [x] Create `notebooks/03_model_training.ipynb` documenting training
+- [x] Add `tests/test_recommender.py` (10 tests, all passing)
 
-### Day 4 - Model Training (CF)
-- [ ] Train SVD (matrix factorization) with grid search
-- [ ] Train k-NN (item-based) as baseline
-- [ ] Save best models (`algo_svd.pkl`, `algo_knn.pkl`)
+### Day 4 - Evaluation ✅
+- [x] RMSE, MAE on test set: SVD (0.846, 0.647) vs k-NN (0.897, 0.688)
+- [x] Precision@10, Recall@10 vs. popularity baseline: SVD (0.528, 0.686) vs Pop (0.066)
+- [x] Coverage & novelty metrics: SVD (0.620, 0.940) vs k-NN (0.672, 0.941)
+- [x] Compare SVD vs. k-NN: SVD wins on accuracy, k-NN wins on coverage
+- [x] Create `src/evaluation.py` with comprehensive metrics
+- [x] Add `tests/test_evaluation.py` (7 tests, all passing)
 
-### Day 5 - Evaluation
-- [ ] RMSE, MAE on test set
-- [ ] Precision@10, Recall@10 vs. popularity baseline
-- [ ] Coverage & novelty metrics
-- [ ] Compare SVD vs. k-NN
-
-### Day 6 - Recommendation Engine
-- [ ] `get_user_recommendations(user_id, top_n=10)`
+### Day 5 - Recommendation Engine 🔄
+- [ ] `get_user_recommendations(user_id, top_n=10)` with movie metadata
 - [ ] Cold-start fallback: popularity-based for new users
-- [ ] Unit tests for recommender
+- [ ] Map inner IDs back to movie titles, genres, years
+- [ ] Add `tests/test_recommendation_engine.py`
 
-### Day 7 - Streamlit UI
-- [ ] User ID input (1-610) → recommendations grid
-- [ ] OMDb API integration for movie posters
+### Day 6 - Streamlit UI
+- [ ] User ID input (1-610) → recommendations grid with posters
+- [ ] OMDb API integration for movie posters (with caching)
 - [ ] Caching, error handling, loading states
+- [ ] Model selector (SVD / k-NN / Popularity)
 
-### Day 8 - Polish UI
+### Day 7 - Polish UI
 - [ ] Styling, responsive layout
-- [ ] "Simulated user" mode (select rated movies)
+- [ ] "Simulated user" mode (select rated movies to get recs)
 - [ ] Model comparison toggle (SVD vs k-NN)
+- [ ] Performance metrics display
 
-### Day 9 - Documentation & Deploy
+### Day 8 - Documentation & Deploy
 - [ ] Update README with CF architecture diagram
 - [ ] Record demo GIF
 - [ ] Deploy to Streamlit Community Cloud
+- [ ] Add `.streamlit/config.toml` and `packages.txt`
 
-### Day 10 - Stretch Goal: Hybrid
+### Day 9 - Stretch Goals
+- [ ] Content-based features (genres, TF-IDF on overviews via TMDB)
+- [ ] Hybrid recommender (weighted CF + content)
 - [ ] Create `cf-hybrid` branch
-- [ ] Blend CF + content-based (weighted)
-- [ ] Compare hybrid vs. pure CF
+
+### Day 10 - Advanced (Optional)
+- [ ] Implicit feedback ALS via `implicit` library
+- [ ] Neural CF with PyTorch
+- [ ] A/B testing framework
+- [ ] Docker containerization
 
 ## Quick Start
 

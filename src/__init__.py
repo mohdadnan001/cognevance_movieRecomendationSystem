@@ -1,1 +1,60 @@
 """Movie Recommender System - Source Package"""
+from .data_loader import load_raw_data, save_processed, load_processed
+from .preprocessing import (
+    clean_movies,
+    filter_ratings,
+    create_user_item_matrix,
+    create_surprise_dataset,
+    user_based_train_test_split,
+    time_based_train_test_split,
+    run_preprocessing_pipeline,
+    load_preprocessed_data,
+)
+from .recommender import (
+    train_svd,
+    train_knn,
+    evaluate_model,
+    get_top_n_recommendations,
+    get_popularity_recommendations,
+    save_model,
+    load_model,
+    train_and_save_models,
+    load_models_and_data,
+)
+from .evaluation import (
+    precision_recall_at_k,
+    coverage,
+    novelty,
+    evaluate_recommender,
+    compare_models,
+    popularity_baseline_recommendations,
+)
+
+__all__ = [
+    "load_raw_data",
+    "save_processed",
+    "load_processed",
+    "clean_movies",
+    "filter_ratings",
+    "create_user_item_matrix",
+    "create_surprise_dataset",
+    "user_based_train_test_split",
+    "time_based_train_test_split",
+    "run_preprocessing_pipeline",
+    "load_preprocessed_data",
+    "train_svd",
+    "train_knn",
+    "evaluate_model",
+    "get_top_n_recommendations",
+    "get_popularity_recommendations",
+    "save_model",
+    "load_model",
+    "train_and_save_models",
+    "load_models_and_data",
+    "precision_recall_at_k",
+    "coverage",
+    "novelty",
+    "evaluate_recommender",
+    "compare_models",
+    "popularity_baseline_recommendations",
+]
