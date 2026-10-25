@@ -23,20 +23,27 @@ movie-recommender/
 │   ├── 02_preprocessing.ipynb  # User-item matrix, train/test split
 │   ├── 03_model_training.ipynb # SVD, k-NN training & tuning
 │   └── 04_evaluation.ipynb     # RMSE, Precision@K, Coverage
+├── scripts/
+│   ├── evaluate_models.py
+│   ├── test_recommendation_engine.py
+│   └── check_genres.py
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py    # Load raw/processed data
 │   ├── preprocessing.py  # Data cleaning, user-item matrix
 │   ├── recommender.py    # CF model training, prediction, recommendations
-│   └── evaluation.py     # RMSE, Precision@K, Coverage metrics
+│   ├── evaluation.py     # RMSE, Precision@K, Coverage metrics
+│   └── recommendation_engine.py  # Metadata enrichment, posters, cold start
 ├── app/
 │   ├── __init__.py
 │   ├── app.py            # Streamlit UI (User ID input)
 │   └── utils.py          # Poster fetching, helpers
 ├── tests/
+│   ├── test_data_loader.py
 │   ├── test_preprocessing.py
 │   ├── test_recommender.py
-│   └── test_evaluation.py
+│   ├── test_evaluation.py
+│   └── test_recommendation_engine.py
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -82,11 +89,15 @@ movie-recommender/
 - [x] Create `src/evaluation.py` with comprehensive metrics
 - [x] Add `tests/test_evaluation.py` (7 tests, all passing)
 
-### Day 5 - Recommendation Engine 🔄
-- [ ] `get_user_recommendations(user_id, top_n=10)` with movie metadata
-- [ ] Cold-start fallback: popularity-based for new users
-- [ ] Map inner IDs back to movie titles, genres, years
-- [ ] Add `tests/test_recommendation_engine.py`
+### Day 5 - Recommendation Engine ✅
+- [x] `get_user_recommendations_with_metadata(user_id, model, top_n=10)` with full movie metadata
+- [x] Cold-start fallback: popularity-based for new/unknown users
+- [x] Map inner IDs back to movie titles, genres, years, IMDB/TMDB IDs
+- [x] OMDb API integration for poster fetching (with LRU caching)
+- [x] User rating history retrieval for "simulated user" mode
+- [x] Create `src/recommendation_engine.py` with unified interface (SVD/k-NN/Popularity)
+- [x] Add `tests/test_recommendation_engine.py` (9 tests, all passing)
+- [x] All 37 tests passing across all modules
 
 ### Day 6 - Streamlit UI
 - [ ] User ID input (1-610) → recommendations grid with posters

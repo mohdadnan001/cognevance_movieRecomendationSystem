@@ -29,6 +29,13 @@ from .evaluation import (
     compare_models,
     popularity_baseline_recommendations,
 )
+from .recommendation_engine import (
+    get_user_recommendations_with_metadata,
+    get_cold_start_recommendations,
+    get_user_rating_history,
+    set_omdb_api_key,
+    fetch_poster_omdb,
+)
 
 __all__ = [
     "load_raw_data",
@@ -57,4 +64,9 @@ __all__ = [
     "evaluate_recommender",
     "compare_models",
     "popularity_baseline_recommendations",
+    "get_user_recommendations_with_metadata",
+    "get_cold_start_recommendations",
+    "get_user_rating_history",
+    "set_omdb_api_key",
+    "fetch_poster_omdb",
 ]
