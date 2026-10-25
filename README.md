@@ -26,6 +26,7 @@ movie-recommender/
 ├── scripts/
 │   ├── evaluate_models.py
 │   ├── test_recommendation_engine.py
+│   ├── test_streamlit_imports.py
 │   └── check_genres.py
 ├── src/
 │   ├── __init__.py
@@ -36,15 +37,19 @@ movie-recommender/
 │   └── recommendation_engine.py  # Metadata enrichment, posters, cold start
 ├── app/
 │   ├── __init__.py
-│   ├── app.py            # Streamlit UI (User ID input)
-│   └── utils.py          # Poster fetching, helpers
+│   ├── app.py            # Streamlit UI (3 modes: User ID, Simulated User, Popular)
+│   └── utils.py          # Poster fetching, formatting, caching
 ├── tests/
 │   ├── test_data_loader.py
 │   ├── test_preprocessing.py
 │   ├── test_recommender.py
 │   ├── test_evaluation.py
 │   └── test_recommendation_engine.py
+├── .streamlit/
+│   ├── config.toml       # Streamlit configuration
+│   └── secrets.toml      # API keys (gitignored)
 ├── requirements.txt
+├── packages.txt          # System deps for Streamlit Cloud
 ├── .gitignore
 └── README.md
 ```
@@ -99,23 +104,28 @@ movie-recommender/
 - [x] Add `tests/test_recommendation_engine.py` (9 tests, all passing)
 - [x] All 37 tests passing across all modules
 
-### Day 6 - Streamlit UI
-- [ ] User ID input (1-610) → recommendations grid with posters
-- [ ] OMDb API integration for movie posters (with caching)
-- [ ] Caching, error handling, loading states
-- [ ] Model selector (SVD / k-NN / Popularity)
+### Day 6 - Streamlit UI ✅
+- [x] User ID input (1-610) → recommendations grid with posters
+- [x] Three modes: User ID, Simulated User, Popular (Cold Start)
+- [x] Model selector: SVD / k-NN / Popularity Baseline
+- [x] OMDb API integration for movie posters (with caching)
+- [x] Loading states, error handling, success messages
+- [x] Responsive movie grid layout (4 columns)
+- [x] User rating history display
+- [x] Model metrics display (RMSE, MAE, Precision@10, Recall@10, Coverage@10)
+- [x] Created `app/app.py` (main UI) and `app/utils.py` (helpers)
+- [x] Streamlit config: `.streamlit/config.toml`, `.streamlit/secrets.toml`, `packages.txt`
 
-### Day 7 - Polish UI
-- [ ] Styling, responsive layout
-- [ ] "Simulated user" mode (select rated movies to get recs)
-- [ ] Model comparison toggle (SVD vs k-NN)
+### Day 7 - Polish UI 🔄
+- [ ] Styling refinements, responsive layout
+- [ ] "Simulated user" mode: select rated movies → get recs
+- [ ] Model comparison toggle (SVD vs k-NN side-by-side)
 - [ ] Performance metrics display
 
 ### Day 8 - Documentation & Deploy
 - [ ] Update README with CF architecture diagram
 - [ ] Record demo GIF
 - [ ] Deploy to Streamlit Community Cloud
-- [ ] Add `.streamlit/config.toml` and `packages.txt`
 
 ### Day 9 - Stretch Goals
 - [ ] Content-based features (genres, TF-IDF on overviews via TMDB)

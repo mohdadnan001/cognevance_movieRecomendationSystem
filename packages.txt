@@ -1,0 +1,5 @@
+# System packages for Streamlit Cloud
+# These are installed via apt-get before pip install
+
+# For OMDb API requests (usually included)
+# For any additional system deps if needed
