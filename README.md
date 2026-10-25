@@ -1,14 +1,14 @@
 # Movie Recommender System
 
-Content-based movie recommendation system built with Python, pandas, scikit-learn, and Streamlit. Uses MovieLens ml-latest-small dataset.
+Collaborative filtering movie recommendation system built with Python, pandas, scikit-learn, scikit-surprise, and Streamlit. Uses MovieLens ml-latest-small dataset.
 
 ## Project Overview
 
 | Aspect | Details |
 |--------|---------|
-| **Approach** | Content-based filtering (TF-IDF + Cosine Similarity) |
-| **Dataset** | MovieLens ml-latest-small (9,742 movies, 100,836 ratings) |
-| **Stack** | Python, pandas, scikit-learn, Streamlit, OMDb API |
+| **Approach** | Collaborative Filtering (SVD / k-NN on user-item matrix) |
+| **Dataset** | MovieLens ml-latest-small (9,742 movies, 100,836 ratings, 610 users) |
+| **Stack** | Python, pandas, scikit-learn, scikit-surprise, Streamlit, OMDb API |
 | **Deployment** | Streamlit Community Cloud |
 
 ## Project Structure
@@ -17,21 +17,26 @@ Content-based movie recommendation system built with Python, pandas, scikit-lear
 movie-recommender/
 ├── data/
 │   ├── raw/              # Original MovieLens CSV files
-│   └── processed/        # Cleaned data, pickled matrices (gitignored)
+│   └── processed/        # Cleaned data, pickled models (gitignored)
 ├── notebooks/
-│   └── 01_eda.ipynb      # Exploratory Data Analysis
+│   ├── 01_eda.ipynb      # Exploratory Data Analysis
+│   ├── 02_preprocessing.ipynb  # User-item matrix, train/test split
+│   ├── 03_model_training.ipynb # SVD, k-NN training & tuning
+│   └── 04_evaluation.ipynb     # RMSE, Precision@K, Coverage
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py    # Load raw/processed data
-│   ├── preprocessing.py  # Data cleaning & feature engineering (Day 2)
-│   ├── recommender.py    # TF-IDF, similarity, recommendations (Day 3-4)
-│   └── evaluation.py     # Precision@K, coverage metrics (Day 5)
+│   ├── preprocessing.py  # Data cleaning, user-item matrix
+│   ├── recommender.py    # CF model training, prediction, recommendations
+│   └── evaluation.py     # RMSE, Precision@K, Coverage metrics
 ├── app/
 │   ├── __init__.py
-│   ├── app.py            # Streamlit UI (Day 6-7)
+│   ├── app.py            # Streamlit UI (User ID input)
 │   └── utils.py          # Poster fetching, helpers
 ├── tests/
-│   └── test_recommender.py
+│   ├── test_preprocessing.py
+│   ├── test_recommender.py
+│   └── test_evaluation.py
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -47,44 +52,58 @@ movie-recommender/
 - [x] Create `.gitignore` (ignores processed data, cache, secrets)
 - [x] Build `src/data_loader.py` for loading raw/processed data
 - [x] Create EDA notebook boilerplate (`notebooks/01_eda.ipynb`)
-- [x] Create virtual environment & install all dependencies
-- [x] Verify data loading works (9,742 movies, 100,836 ratings)
+- [x] Create virtual environment & install all dependencies (including scikit-surprise)
+- [x] Verify data loading works (9,742 movies, 100,836 ratings, 610 users)
 
 ### Day 2 - Data Cleaning & EDA 🔄
 - [ ] Run EDA notebook to generate insights
 - [ ] Build `src/preprocessing.py` with cleaning logic
 - [ ] Merge movies + ratings, filter movies with ≥5 ratings
 - [ ] Handle missing values, parse genres
+- [ ] Build user-item sparse matrix
+- [ ] Train/test split by user (for CF evaluation)
 - [ ] Save cleaned data to `data/processed/`
 
-### Day 3 - Feature Engineering
-- [ ] TF-IDF vectorization on genres + overview
-- [ ] Save vectorizer and TF-IDF matrix
+### Day 3 - User-Item Matrix & Train/Test Split
+- [ ] Convert to surprise `Dataset` format
+- [ ] Create trainset/testset split (time-based or user-based)
+- [ ] Save splits for reproducible training
 
-### Day 4 - Model Building
-- [ ] Compute cosine similarity matrix
-- [ ] Implement `get_recommendations(movie_title, top_n=10)`
+### Day 4 - Model Training (CF)
+- [ ] Train SVD (matrix factorization) with grid search
+- [ ] Train k-NN (item-based) as baseline
+- [ ] Save best models (`algo_svd.pkl`, `algo_knn.pkl`)
 
 ### Day 5 - Evaluation
-- [ ] Train/test split by user
-- [ ] Precision@10 vs. popularity baseline
-- [ ] Coverage & diversity metrics
+- [ ] RMSE, MAE on test set
+- [ ] Precision@10, Recall@10 vs. popularity baseline
+- [ ] Coverage & novelty metrics
+- [ ] Compare SVD vs. k-NN
 
-### Day 6-7 - Streamlit UI
-- [ ] Search interface, recommendations grid
+### Day 6 - Recommendation Engine
+- [ ] `get_user_recommendations(user_id, top_n=10)`
+- [ ] Cold-start fallback: popularity-based for new users
+- [ ] Unit tests for recommender
+
+### Day 7 - Streamlit UI
+- [ ] User ID input (1-610) → recommendations grid
 - [ ] OMDb API integration for movie posters
-- [ ] Caching, error handling, styling
+- [ ] Caching, error handling, loading states
 
-### Day 8 - Documentation
-- [ ] Complete README with architecture diagram
+### Day 8 - Polish UI
+- [ ] Styling, responsive layout
+- [ ] "Simulated user" mode (select rated movies)
+- [ ] Model comparison toggle (SVD vs k-NN)
+
+### Day 9 - Documentation & Deploy
+- [ ] Update README with CF architecture diagram
 - [ ] Record demo GIF
-
-### Day 9 - Deployment
 - [ ] Deploy to Streamlit Community Cloud
-- [ ] Verify live app
 
-### Day 10 - Stretch Goal (Optional)
-- [ ] Collaborative filtering branch (SVD/user-item)
+### Day 10 - Stretch Goal: Hybrid
+- [ ] Create `cf-hybrid` branch
+- [ ] Blend CF + content-based (weighted)
+- [ ] Compare hybrid vs. pure CF
 
 ## Quick Start
 
@@ -109,11 +128,21 @@ streamlit run app/app.py
 - **Version**: ml-latest-small
 - **Files**: movies.csv, ratings.csv, links.csv, tags.csv
 
+## Evaluation Metrics
+
+| Metric | Target |
+|--------|--------|
+| RMSE | < 0.90 |
+| MAE | < 0.70 |
+| Precision@10 | > 0.15 |
+| Coverage | > 0.30 |
+
 ## Future Improvements
 
-- Hybrid recommender (content + collaborative)
-- User profiles & personalization
-- Real-time model retraining
+- Hybrid recommender (CF + content-based)
+- Implicit feedback (ALS via `implicit` library)
+- Deep learning: Neural CF, AutoEncoders
+- Real-time model retraining pipeline
 - A/B testing framework
 - Docker containerization
 
