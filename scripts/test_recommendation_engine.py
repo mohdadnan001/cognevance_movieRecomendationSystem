@@ -1,30 +1,40 @@
+"""Smoke-test the recommendation engine (SVD, cold start, history, simulated user).
+
+Run from anywhere:  python scripts/test_recommendation_engine.py
+"""
 import sys
-sys.path.append('..')
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 
 from src.recommendation_engine import (
-    get_user_recommendations_with_metadata,
     get_cold_start_recommendations,
+    get_simulated_user_recommendations,
     get_user_rating_history,
+    get_user_recommendations_with_metadata,
 )
 
-print("Testing recommendations for user 1 (SVD)...")
-recs = get_user_recommendations_with_metadata(1, "svd", top_n=5)
-for r in recs:
-    print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - Genres: {r['genres']}")
 
-print("\nTesting cold start recommendations...")
-cold = get_cold_start_recommendations(5)
-for r in cold:
-    print(f"  {r['title']} ({r['year']}) - Avg: {r['average_rating']} - Genres: {r['genres']}")
+def main() -> int:
+    print("User 1 (SVD):")
+    for r in get_user_recommendations_with_metadata(1, "svd", top_n=5):
+        print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - {r['genres']}")
 
-print("\nTesting user 1 rating history...")
-hist = get_user_rating_history(1, top_n=5)
-for r in hist:
-    print(f"  {r['title']} ({r['year']}) - Rating: {r['rating']} - Genres: {r['genres']}")
+    print("\nCold start:")
+    for r in get_cold_start_recommendations(5):
+        print(f"  {r['title']} ({r['year']}) - Avg: {r['average_rating']} - {r['genres']}")
 
-print("\nTesting k-NN recommendations...")
-recs_knn = get_user_recommendations_with_metadata(1, "knn", top_n=5)
-for r in recs_knn:
-    print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - Genres: {r['genres']}")
+    print("\nUser 1 history:")
+    for r in get_user_rating_history(1, top_n=5):
+        print(f"  {r['title']} ({r['year']}) - Rating: {r['rating']} - {r['genres']}")
 
-print("\nAll tests passed!")
+    print("\nSimulated user (likes Toy Story and Jumanji):")
+    for r in get_simulated_user_recommendations([1, 2], top_n=5):
+        print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - {r['genres']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,24 +1,31 @@
-import sys
-sys.path.append('..')
+"""Evaluate the SVD recommender and save metrics for the app.
 
-from src.evaluation import compare_models, popularity_baseline_recommendations, evaluate_recommender
+Run from anywhere:  python scripts/evaluate_models.py
+"""
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
+from src.evaluation import PopularityBaseline, evaluate_recommender, save_metrics
 from src.recommender import load_models_and_data
 
-data, svd_algo, knn_algo = load_models_and_data()
-trainset = data["train_data"].build_full_trainset()
-testset = data["test_data"].build_full_trainset().build_testset()
 
-models = {"SVD": svd_algo, "k-NN": knn_algo}
-results = compare_models(models, testset, trainset, k=10, threshold=4.0)
-print("Model Comparison:")
-print(results.to_string())
-print()
+def main() -> int:
+    data, svd_algo = load_models_and_data()
+    trainset = data["train_data"].build_full_trainset()
+    testset = data["test_data"].build_full_trainset().build_testset()
 
-pop_predictions = popularity_baseline_recommendations(trainset, testset, k=10)
+    print("SVD (full-catalog ranking)")
+    metrics = evaluate_recommender(svd_algo, testset, trainset, k=10)
 
-class PopBaseline:
-    def test(self, ts):
-        return pop_predictions
+    print("\nPopularity baseline (reference only)")
+    evaluate_recommender(PopularityBaseline(trainset), testset, trainset, k=10)
 
-pop_metrics = evaluate_recommender(PopBaseline(), testset, trainset, k=10, threshold=4.0)
-print("Popularity baseline:", pop_metrics)
+    print(f"\nSaved metrics to {save_metrics(metrics)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

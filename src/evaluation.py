@@ -1,230 +1,260 @@
-"""Evaluation metrics for collaborative filtering."""
-import numpy as np
-import pandas as pd
-from surprise import accuracy
+"""Evaluation metrics for the SVD recommender.
+
+Ranking metrics (Precision@K, Recall@K, Coverage@K, Novelty@K) are computed over
+the **full catalog**: for every user we score all items they did not rate in the
+training set and keep the top-K. Ranking only the held-out test items - which is
+what this module used to do - inflates precision by roughly two orders of
+magnitude and cannot detect the classic matrix-factorisation failure where every
+user receives the same popular titles.
+
+Rating-prediction metrics (RMSE, MAE) use the held-out test ratings directly.
+"""
+import json
+from pathlib import Path
 from collections import defaultdict
 
+import numpy as np
+from surprise import accuracy
 
-def precision_recall_at_k(predictions, k=10, threshold=4.0):
+PROCESSED_DIR = Path(__file__).parent.parent / "data" / "processed"
+METRICS_PATH = PROCESSED_DIR / "metrics.json"
+
+
+def _user_scores(algo, trainset, uid_inner: int) -> np.ndarray:
+    """Estimated rating for every item in the trainset for one user.
+
+    For SVD this uses the factor matrices directly, which is exact (it matches
+    ``algo.predict`` on raw IDs) and orders of magnitude faster than calling
+    ``predict`` once per item.
     """
-    Compute Precision@K and Recall@K.
-    
+    if all(hasattr(algo, attr) for attr in ("pu", "qi", "bu", "bi")):
+        scores = (
+            trainset.global_mean
+            + algo.bu[uid_inner]
+            + algo.bi
+            + algo.qi @ algo.pu[uid_inner]
+        )
+        lo, hi = trainset.rating_scale
+        return np.clip(scores, lo, hi)
+
+    if hasattr(algo, "fixed_scores"):
+        return np.asarray(algo.fixed_scores, dtype=float)
+
+    raw_uid = trainset.to_raw_uid(uid_inner)
+    return np.array(
+        [
+            algo.predict(raw_uid, trainset.to_raw_iid(i), verbose=False).est
+            for i in range(trainset.n_items)
+        ]
+    )
+
+
+def rank_candidates(algo, trainset, user_id: int, k: int = 10, exclude_rated: bool = True):
+    """Top-K full-catalog recommendations for one user.
+
     Args:
-        predictions: List of surprise Prediction objects
-        k: Number of top recommendations
-        threshold: Rating threshold for "relevant" items
-    
+        algo: Trained surprise algorithm (or popularity baseline).
+        trainset: Surprise trainset the algorithm was fitted on.
+        user_id: Raw user ID.
+        k: Number of recommendations.
+        exclude_rated: Drop items the user already rated in the trainset.
+
     Returns:
-        Tuple of (precision, recall) averaged over users
+        ``(item_ids, scores)``: raw MovieLens movie IDs and their predicted
+        ratings, sorted best-first. Both empty if the user is unknown.
     """
-    # Map user -> list of (item, true_rating, est_rating)
-    user_preds = defaultdict(list)
-    for pred in predictions:
-        user_preds[pred.uid].append((pred.iid, pred.r_ui, pred.est))
-    
-    precisions = []
-    recalls = []
-    
-    for uid, preds in user_preds.items():
-        # Sort by estimated rating descending
-        preds.sort(key=lambda x: x[2], reverse=True)
-        
-        # Top-k items
-        top_k = preds[:k]
-        
-        # Relevant items (true rating >= threshold)
-        relevant = set(iid for iid, true_r, _ in preds if true_r >= threshold)
-        recommended = set(iid for iid, _, _ in top_k)
-        
-        # Precision@K
-        n_rel_and_rec = len(relevant & recommended)
-        precision = n_rel_and_rec / k if k > 0 else 0
-        
-        # Recall@K
-        n_rel = len(relevant)
-        recall = n_rel_and_rec / n_rel if n_rel > 0 else 0
-        
-        precisions.append(precision)
-        recalls.append(recall)
-    
-    return np.mean(precisions), np.mean(recalls)
+    try:
+        uid_inner = trainset.to_inner_uid(user_id)
+    except ValueError:
+        return [], []
+
+    scores = _user_scores(algo, trainset, uid_inner).astype(float)
+    if exclude_rated:
+        for iid_inner, _ in trainset.ur[uid_inner]:
+            scores[iid_inner] = -np.inf
+
+    k = min(k, int(np.isfinite(scores).sum()))
+    if k <= 0:
+        return [], []
+
+    top = np.argpartition(-scores, k - 1)[:k]
+    top = top[np.argsort(-scores[top])]
+
+    return [trainset.to_raw_iid(i) for i in top], [float(scores[i]) for i in top]
 
 
-def coverage(predictions, trainset, k=10):
-    """
-    Compute catalog coverage: % of items that appear in top-k recommendations.
-    """
-    # Get all items recommended in top-k for any user
-    recommended_items = set()
-    
-    user_preds = defaultdict(list)
-    for pred in predictions:
-        user_preds[pred.uid].append((pred.iid, pred.est))
-    
-    for uid, preds in user_preds.items():
-        preds.sort(key=lambda x: x[1], reverse=True)
-        top_k = preds[:k]
-        recommended_items.update(iid for iid, _ in top_k)
-    
-    n_items = trainset.n_items
-    return len(recommended_items) / n_items
+def _relevant_items(testset, threshold: float) -> dict:
+    """Map raw user ID -> set of raw item IDs rated >= threshold in the testset."""
+    relevant = defaultdict(set)
+    for uid, iid, true_r in testset:
+        if true_r >= threshold:
+            relevant[uid].add(iid)
+    return relevant
 
 
-def novelty(predictions, trainset, k=10):
+def precision_recall_at_k(algo, trainset, testset, k: int = 10, threshold: float = 4.0):
+    """Precision@K and Recall@K over the full catalog.
+
+    A recommendation is "relevant" when the user actually rated that movie
+    >= ``threshold`` in the held-out test set. Users with no relevant test items
+    are skipped (recall is undefined for them).
+
+    Returns:
+        Tuple ``(precision, recall, n_users)``.
     """
-    Compute average novelty (inverse popularity) of recommended items.
-    Lower popularity = higher novelty.
-    """
-    # Compute item popularity (number of ratings in trainset)
-    item_popularity = defaultdict(int)
-    for uid in range(trainset.n_users):
-        for iid, _ in trainset.ur[uid]:
-            item_popularity[iid] += 1
-    
-    # Normalize popularity to [0, 1]
-    max_pop = max(item_popularity.values()) if item_popularity else 1
-    norm_pop = {iid: pop / max_pop for iid, pop in item_popularity.items()}
-    
-    user_preds = defaultdict(list)
-    for pred in predictions:
-        user_preds[pred.uid].append((pred.iid, pred.est))
-    
-    novelties = []
-    for uid, preds in user_preds.items():
-        preds.sort(key=lambda x: x[1], reverse=True)
-        top_k = preds[:k]
-        for iid, _ in top_k:
-            # Novelty = 1 - normalized popularity
-            novelties.append(1 - norm_pop.get(iid, 0))
-    
-    return np.mean(novelties) if novelties else 0
+    relevant = _relevant_items(testset, threshold)
+
+    precisions, recalls = [], []
+    for uid, rel_items in relevant.items():
+        recommended, _ = rank_candidates(algo, trainset, uid, k=k)
+        if not recommended:
+            continue
+        hits = len(rel_items.intersection(recommended))
+        precisions.append(hits / k)
+        recalls.append(hits / len(rel_items))
+
+    if not precisions:
+        return 0.0, 0.0, 0
+
+    return float(np.mean(precisions)), float(np.mean(recalls)), len(precisions)
 
 
-def evaluate_recommender(algo, testset, trainset, k=10, threshold=4.0):
+def coverage(algo, trainset, users, k: int = 10) -> float:
+    """Catalog coverage: share of the catalog that appears in some top-K list."""
+    recommended = set()
+    for uid in users:
+        items, _ = rank_candidates(algo, trainset, uid, k=k)
+        recommended.update(items)
+
+    return len(recommended) / trainset.n_items if trainset.n_items else 0.0
+
+
+def novelty(algo, trainset, users, k: int = 10) -> float:
+    """Mean novelty (1 - normalised popularity) of the recommended items."""
+    popularity = np.zeros(trainset.n_items)
+    for uid_inner in range(trainset.n_users):
+        for iid_inner, _ in trainset.ur[uid_inner]:
+            popularity[iid_inner] += 1
+
+    max_pop = popularity.max() if popularity.size else 0
+    if max_pop == 0:
+        return 0.0
+    norm_pop = popularity / max_pop
+
+    novels = []
+    for uid in users:
+        try:
+            uid_inner = trainset.to_inner_uid(uid)
+        except ValueError:
+            continue
+        items, _ = rank_candidates(algo, trainset, uid, k=k)
+        for raw_iid in items:
+            novels.append(1.0 - norm_pop[trainset.to_inner_iid(raw_iid)])
+
+    return float(np.mean(novels)) if novels else 0.0
+
+
+def evaluate_recommender(algo, testset, trainset, k: int = 10, threshold: float = 4.0, verbose: bool = True):
+    """Full evaluation of the SVD recommender.
+
+    Returns:
+        Dict with ``rmse``, ``mae``, ``precision@K``, ``recall@K``,
+        ``coverage@K``, ``novelty@K`` and ``n_users``.
     """
-    Comprehensive evaluation of a recommender.
-    
-    Returns dict with all metrics.
-    """
-    # Get predictions
     predictions = algo.test(testset)
-    
-    # Rating prediction metrics
     rmse = accuracy.rmse(predictions, verbose=False)
     mae = accuracy.mae(predictions, verbose=False)
-    
-    # Top-N metrics
-    precision, recall = precision_recall_at_k(predictions, k, threshold)
-    cov = coverage(predictions, trainset, k)
-    nov = novelty(predictions, trainset, k)
-    
-    return {
-        "rmse": rmse,
-        "mae": mae,
+
+    precision, recall, n_users = precision_recall_at_k(
+        algo, trainset, testset, k=k, threshold=threshold
+    )
+    users = sorted(_relevant_items(testset, threshold))
+
+    metrics = {
+        "rmse": float(rmse),
+        "mae": float(mae),
         f"precision@{k}": precision,
         f"recall@{k}": recall,
-        f"coverage@{k}": cov,
-        f"novelty@{k}": nov,
+        f"coverage@{k}": coverage(algo, trainset, users, k=k),
+        f"novelty@{k}": novelty(algo, trainset, users, k=k),
+        "n_users": n_users,
+        "k": k,
+        "threshold": threshold,
     }
 
+    if verbose:
+        print(f"RMSE {rmse:.4f} | MAE {mae:.4f}")
+        print(
+            f"Precision@{k} {precision:.4f} | Recall@{k} {recall:.4f} | "
+            f"Coverage@{k} {metrics[f'coverage@{k}']:.3f} | "
+            f"Novelty@{k} {metrics[f'novelty@{k}']:.3f} ({n_users} users)"
+        )
 
-def compare_models(models_dict, testset, trainset, k=10, threshold=4.0):
-    """
-    Compare multiple models.
-    
-    Args:
-        models_dict: {name: algo} dict
-        testset: Surprise testset
-        trainset: Surprise trainset
-        k: Top-K for recommendation metrics
-        threshold: Relevance threshold
-    
-    Returns:
-        DataFrame with metrics for each model
-    """
-    results = []
-    for name, algo in models_dict.items():
-        print(f"Evaluating {name}...")
-        metrics = evaluate_recommender(algo, testset, trainset, k, threshold)
-        metrics["model"] = name
-        results.append(metrics)
-    
-    df = pd.DataFrame(results)
-    return df.set_index("model")
+    return metrics
 
 
-def popularity_baseline_recommendations(trainset, testset, k=10):
+class PopularityBaseline:
+    """Rank items by their mean train rating (min ``min_support`` ratings).
+
+    Used as a reference point. It exposes ``test()`` so it can be evaluated with
+    the same functions as a trained SVD model.
     """
-    Generate popularity-based recommendations as baseline.
-    
-    Args:
-        trainset: Surprise trainset
-        testset: List of (uid, iid, true_r) tuples
-        k: Number of recommendations per user
-    
-    Returns:
-        List of surprise Prediction objects
-    """
-    # Compute average rating per item in trainset
-    item_ratings = defaultdict(list)
-    for uid in range(trainset.n_users):
-        for iid, rating in trainset.ur[uid]:
-            item_ratings[iid].append(rating)
-    
-    item_avg = {}
-    for iid, ratings in item_ratings.items():
-        if len(ratings) >= 5:  # Minimum support
-            item_avg[iid] = np.mean(ratings)
-    
-    # Sort items by average rating
-    sorted_items = sorted(item_avg.items(), key=lambda x: x[1], reverse=True)
-    top_items = [iid for iid, _ in sorted_items[:k * 2]]  # Get more to account for filtering
-    
-    # Get test users and their true ratings
-    test_user_items = defaultdict(list)
-    for uid, iid, true_r in testset:
-        test_user_items[uid].append((iid, true_r))
-    
-    # Get train items per user (to exclude)
-    train_user_items = defaultdict(set)
-    for uid in range(trainset.n_users):
-        train_user_items[uid] = set(iid for iid, _ in trainset.ur[uid])
-    
-    from surprise import Prediction
-    
-    predictions = []
-    for uid, items in test_user_items.items():
-        # Get candidate popular items not rated in train
-        candidates = [iid for iid in top_items if iid not in train_user_items[uid]]
-        
-        for iid in candidates[:k]:
-            est = item_avg[iid]
-            # Find true rating if in test
-            true_r = next((r for i, r in items if i == iid), None)
-            if true_r is not None:
-                pred = Prediction(uid, iid, true_r, est, None)
-                predictions.append(pred)
-    
-    return predictions
+
+    def __init__(self, trainset, min_support: int = 5):
+        sums = np.zeros(trainset.n_items)
+        counts = np.zeros(trainset.n_items)
+        for uid_inner in range(trainset.n_users):
+            for iid_inner, rating in trainset.ur[uid_inner]:
+                sums[iid_inner] += rating
+                counts[iid_inner] += 1
+
+        scores = np.full(trainset.n_items, trainset.rating_scale[0], dtype=float)
+        supported = counts >= min_support
+        scores[supported] = sums[supported] / counts[supported]
+
+        self.fixed_scores = scores
+        self.trainset = trainset
+
+    def predict(self, uid, iid, verbose=False):
+        return self.fixed_scores[self.trainset.to_inner_iid(iid)]
+
+    def test(self, testset):
+        from surprise import Prediction
+
+        return [
+            Prediction(uid, iid, true_r, self.predict(uid, iid), None)
+            for uid, iid, true_r in testset
+        ]
+
+
+def save_metrics(metrics: dict, path: Path = METRICS_PATH) -> Path:
+    """Persist evaluation metrics so the app can display them without recomputing."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    return path
+
+
+def load_metrics(path: Path = METRICS_PATH):
+    """Load saved metrics, or ``None`` if evaluation has not been run yet."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 if __name__ == "__main__":
     from src.recommender import load_models_and_data
-    
-    data, svd_algo, knn_algo = load_models_and_data()
+
+    data, svd_algo, _ = load_models_and_data()
     trainset = data["train_data"].build_full_trainset()
     testset = data["test_data"].build_full_trainset().build_testset()
-    
-    models = {"SVD": svd_algo, "k-NN": knn_algo}
-    results = compare_models(models, testset, trainset, k=10, threshold=4.0)
-    print("\nModel Comparison:")
-    print(results)
-    
-    # Popularity baseline
-    print("\nEvaluating popularity baseline...")
-    pop_predictions = popularity_baseline_recommendations(trainset, testset, k=10)
-    pop_metrics = evaluate_recommender(
-        type("PopBaseline", (), {"test": lambda self, ts: pop_predictions})(),
-        testset, trainset, k=10, threshold=4.0
-    )
-    print(f"Popularity baseline: {pop_metrics}")
+
+    print("SVD (full-catalog ranking)")
+    svd_metrics = evaluate_recommender(svd_algo, testset, trainset, k=10)
+
+    print("\nPopularity baseline (reference)")
+    evaluate_recommender(PopularityBaseline(trainset), testset, trainset, k=10)
+
+    print(f"\nSaved metrics to {save_metrics(svd_metrics)}")

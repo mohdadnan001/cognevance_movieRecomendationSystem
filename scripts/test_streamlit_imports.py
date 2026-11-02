@@ -1,30 +1,40 @@
+"""Import smoke test for the Streamlit app modules (no data loading).
+
+Run from anywhere:  python scripts/test_streamlit_imports.py
+"""
 import sys
-sys.path.append('.')
+from pathlib import Path
 
-# Test imports only (no data loading)
-print("Testing imports...")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 
-from src.recommendation_engine import (
-    get_user_recommendations_with_metadata,
-    get_cold_start_recommendations,
-    get_user_rating_history,
-)
-print("Recommendation engine imports OK")
-
-from app.utils import (
-    display_movie_grid,
-    load_user_options,
-    get_all_movies_for_simulated_user,
-)
-print("App utils imports OK")
-
-# Quick sanity check
-print("Testing function signatures...")
 import inspect
-sig = inspect.signature(get_user_recommendations_with_metadata)
-print(f"  get_user_recommendations_with_metadata: {sig}")
 
-sig = inspect.signature(get_cold_start_recommendations)
-print(f"  get_cold_start_recommendations: {sig}")
+from src.evaluation import evaluate_recommender, load_metrics
+from src.recommendation_engine import (
+    get_cold_start_recommendations,
+    get_simulated_user_recommendations,
+    get_user_rating_history,
+    get_user_recommendations_with_metadata,
+)
 
-print("All import tests passed!")
+
+def main() -> int:
+    print("Source imports OK")
+
+    for func in (
+        get_user_recommendations_with_metadata,
+        get_cold_start_recommendations,
+        get_user_rating_history,
+        get_simulated_user_recommendations,
+        evaluate_recommender,
+    ):
+        print(f"  {func.__name__}{inspect.signature(func)}")
+
+    print(f"  load_metrics() -> {load_metrics() is not None and 'saved metrics found' or 'no saved metrics yet'}")
+    print("\nAll import tests passed!")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,93 +1,142 @@
-"""Recommendation engine with movie metadata enrichment and poster fetching."""
-from pathlib import Path
-import joblib
-import requests
-from functools import lru_cache
-from typing import List, Dict, Optional, Tuple
+"""Recommendation engine: SVD recommendations enriched with movie metadata.
 
-import pandas as pd
+``src.recommender`` returns raw MovieLens movie IDs for every recommendation, so
+the metadata layer only has to join against ``movies.csv`` / ``links.csv`` - no
+inner-ID mapping is involved (mapping Surprise inner IDs through a separately
+built ``mappings.joblib`` produced wrong movies).
+"""
+import os
+import urllib.parse
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, List, Optional
+
 import numpy as np
+import pandas as pd
+import requests
+from dotenv import load_dotenv
 
 from src.recommender import (
-    load_models_and_data,
-    get_top_n_recommendations,
     get_popularity_recommendations,
+    get_top_n_recommendations,
+    load_models_and_data,
 )
-from src.preprocessing import load_preprocessed_data
 
-PROCESSED_DIR = Path(__file__).parent.parent / "data" / "processed"
 RAW_DIR = Path(__file__).parent.parent / "data" / "raw"
 
 # OMDb API configuration
 OMDB_BASE_URL = "http://www.omdbapi.com/"
-OMDB_API_KEY = None  # Set via environment variable
+
+_load_dotenv = load_dotenv
+_load_dotenv(Path(__file__).parent.parent / ".env", override=False)
+
+OMDB_API_KEY = os.getenv("OMDB_API_KEY", "")
 
 
-def set_omdb_api_key(api_key: str):
+def set_omdb_api_key(api_key: str) -> None:
     """Set OMDb API key."""
     global OMDB_API_KEY
     OMDB_API_KEY = api_key
 
 
-@lru_cache(maxsize=1000)
-def fetch_poster_omdb(imdb_id: str) -> Optional[str]:
-    """
-    Fetch movie poster URL from OMDb API.
-    
-    Args:
-        imdb_id: IMDb ID (e.g., 'tt0114709')
-    
-    Returns:
-        Poster URL or None if not found
-    """
-    if not OMDB_API_KEY:
-        return None
-    
-    # Ensure IMDb ID format
+def _placeholder_poster(title: str = "Movie", year: int = None) -> str:
+    """Generate a fallback placeholder poster URL."""
+    text = f"{title} {year}".strip() if year else title
+    encoded = urllib.parse.quote(text)
+    return f"https://placehold.co/300x450/1a1a1a/FF6B6B?text={encoded}"
+
+
+@lru_cache(maxsize=2000)
+def fetch_poster_omdb(imdb_id: str, title: str = "", year: int = None) -> str:
+    """Fetch a poster URL from OMDb, always returning a usable URL."""
+    if not OMDB_API_KEY or not imdb_id:
+        return _placeholder_poster(title, year)
+
     if not imdb_id.startswith("tt"):
         imdb_id = f"tt{imdb_id.zfill(7)}"
-    
+
     try:
-        params = {"apikey": OMDB_API_KEY, "i": imdb_id, "plot": "short"}
-        response = requests.get(OMDB_BASE_URL, params=params, timeout=5)
+        response = requests.get(
+            OMDB_BASE_URL,
+            params={"apikey": OMDB_API_KEY, "i": imdb_id, "plot": "short"},
+            timeout=5,
+        )
         response.raise_for_status()
         data = response.json()
-        
         if data.get("Response") == "True" and data.get("Poster") != "N/A":
             return data["Poster"]
     except Exception:
         pass
-    
-    return None
+
+    return _placeholder_poster(title, year)
 
 
-def get_movie_metadata(movie_ids: List[int]) -> pd.DataFrame:
-    """
-    Get movie metadata for a list of movie IDs.
-    
-    Args:
-        movie_ids: List of raw movie IDs
-    
-    Returns:
-        DataFrame with movieId, title, genres, year, imdbId, tmdbId
-    """
-    # Load movies and links
-    movies_clean = load_preprocessed_data()["movies_clean"]
-    links = pd.read_csv(RAW_DIR / "links.csv")
-    
-    # Merge
-    meta = movies_clean[["movieId", "clean_title", "genres_list", "year"]].copy()
-    meta = meta.merge(links[["movieId", "imdbId", "tmdbId"]], on="movieId", how="left")
-    
-    # Filter to requested IDs
-    meta = meta[meta["movieId"].isin(movie_ids)].copy()
-    
-    # Add poster URLs
-    meta["poster_url"] = meta["imdbId"].apply(
-        lambda x: fetch_poster_omdb(str(int(x))) if pd.notna(x) else None
-    )
-    
-    return meta
+@lru_cache(maxsize=1)
+def _load():
+    """Load preprocessed data, the SVD model and its trainset once per process."""
+    data, svd_algo = load_models_and_data()
+    return data, svd_algo, data["train_data"].build_full_trainset()
+
+
+@lru_cache(maxsize=1)
+def _movie_catalog() -> pd.DataFrame:
+    """Cleaned movies joined with the IMDb/TMDB links, indexed by ``movieId``."""
+    data, _, _ = _load()
+    movies = data["movies_clean"][["movieId", "clean_title", "genres_list", "year"]]
+    links = pd.read_csv(RAW_DIR / "links.csv")[["movieId", "imdbId", "tmdbId"]]
+    catalog = movies.merge(links, on="movieId", how="left")
+    return catalog.set_index("movieId", drop=False)
+
+
+def _genres(row) -> List[str]:
+    """Normalise a ``genres_list`` cell (parquet may return numpy arrays)."""
+    genres = row["genres_list"]
+    if hasattr(genres, "tolist"):
+        genres = genres.tolist()
+    return genres if isinstance(genres, list) else []
+
+
+def _build_result(row, score: float, score_key: str, include_posters: bool) -> Dict:
+    """Build the metadata dict the Streamlit app renders."""
+    imdb_id = row["imdbId"]
+    year = row["year"]
+
+    result = {
+        "movieId": int(row["movieId"]),
+        "title": row["clean_title"],
+        "genres": _genres(row),
+        "year": int(year) if pd.notna(year) else None,
+        "imdbId": f"tt{int(imdb_id):07d}" if pd.notna(imdb_id) else None,
+        "tmdbId": int(row["tmdbId"]) if pd.notna(row["tmdbId"]) else None,
+    }
+
+    if score_key == "estimated_rating":
+        result["estimated_rating"] = round(score, 2)
+    else:
+        result["average_rating"] = round(score, 2)
+
+    if include_posters:
+        result["poster_url"] = fetch_poster_omdb(
+            str(int(imdb_id)) if pd.notna(imdb_id) else "",
+            title=row["clean_title"],
+            year=result["year"],
+        )
+
+    return result
+
+
+def _enrich(ranked, score_key: str, include_posters: bool) -> List[Dict]:
+    """Join ranked ``(movieId, score)`` pairs with movie metadata."""
+    if not ranked:
+        return []
+
+    catalog = _movie_catalog()
+    results = []
+    for movie_id, score in ranked:
+        if movie_id not in catalog.index:
+            continue
+        results.append(_build_result(catalog.loc[movie_id], score, score_key, include_posters))
+    return results
 
 
 def get_user_recommendations_with_metadata(
@@ -97,219 +146,117 @@ def get_user_recommendations_with_metadata(
     include_posters: bool = False,
 ) -> List[Dict]:
     """
-    Get top-N recommendations for a user with full movie metadata.
-    
+    Get top-N SVD recommendations for a user, with full movie metadata.
+
     Args:
-        user_id: Raw user ID (1-610)
-        model_name: "svd", "knn", or "popularity"
-        top_n: Number of recommendations
-        include_posters: Whether to fetch posters from OMDb
-    
+        user_id: Raw MovieLens user ID.
+        model_name: ``"svd"`` or ``"popularity"`` (cold-start fallback).
+        top_n: Number of recommendations.
+        include_posters: Whether to fetch posters from OMDb.
+
     Returns:
-        List of dicts with movie metadata and estimated rating
+        List of metadata dicts. Empty for an unknown user under ``"svd"``.
     """
-    # Load models and data
-    data, svd_algo, knn_algo = load_models_and_data()
-    trainset = data["train_data"].build_full_trainset()
-    movies_clean = data["movies_clean"]
-    links = pd.read_csv(RAW_DIR / "links.csv")
-    
-    # Select model
-    if model_name == "svd":
-        algo = svd_algo
-    elif model_name == "knn":
-        algo = knn_algo
-    elif model_name == "popularity":
-        algo = None
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
-    
-    # Get recommendations (inner IDs + estimated ratings)
+    _, svd_algo, trainset = _load()
+
     if model_name == "popularity":
-        recs_inner = get_popularity_recommendations(trainset, n=top_n)
-    else:
-        recs_inner = get_top_n_recommendations(algo, user_id, trainset, n=top_n)
-    
-    if not recs_inner:
+        ranked = get_popularity_recommendations(trainset, n=top_n)
+        return _enrich(ranked, "estimated_rating", include_posters)
+
+    if model_name != "svd":
+        raise ValueError(f"Unknown model: {model_name}")
+
+    ranked = get_top_n_recommendations(svd_algo, user_id, trainset, n=top_n)
+    return _enrich(ranked, "estimated_rating", include_posters)
+
+
+def get_simulated_user_recommendations(
+    movie_ids: List[int],
+    top_n: int = 10,
+    include_posters: bool = False,
+) -> List[Dict]:
+    """Recommend from a set of movies the visitor picked themselves.
+
+    SVD has no user factor for an unknown visitor, so we build one by averaging
+    the item factors of the chosen movies and score the catalog with it. Items
+    the visitor already picked are excluded.
+    """
+    if not movie_ids:
         return []
-    
-    # Map inner IDs to raw movie IDs
-    idx_to_movie = data["mappings"]["idx_to_movie"] if "mappings" in data else None
-    
-    # If mappings not in data, load from joblib
-    if idx_to_movie is None:
-        mappings = joblib.load(PROCESSED_DIR / "mappings.joblib")
-        idx_to_movie = mappings["idx_to_movie"]
-    
-    # Convert to raw movie IDs
-    recs_raw = []
-    for iid_inner, est_rating in recs_inner:
-        movie_id = idx_to_movie.get(iid_inner)
-        if movie_id:
-            recs_raw.append((movie_id, float(est_rating)))
-    
-    # Get metadata
-    movie_ids = [mid for mid, _ in recs_raw]
-    meta = get_movie_metadata(movie_ids)
-    
-    # Build result
-    results = []
-    for movie_id, est_rating in recs_raw:
-        movie_meta = meta[meta["movieId"] == movie_id]
-        if len(movie_meta) == 0:
-            continue
-        
-        row = movie_meta.iloc[0]
-        # Handle genres_list (could be numpy array or list)
-        genres = row["genres_list"]
-        if hasattr(genres, 'tolist'):
-            genres = genres.tolist()
-        elif not isinstance(genres, list):
-            genres = []
-        
-        result = {
-            "movieId": int(movie_id),
-            "title": row["clean_title"],
-            "genres": genres,
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "imdbId": f"tt{int(row['imdbId']):07d}" if pd.notna(row["imdbId"]) else None,
-            "tmdbId": int(row["tmdbId"]) if pd.notna(row["tmdbId"]) else None,
-            "estimated_rating": round(est_rating, 2),
-        }
-        
-        if include_posters and row.get("poster_url"):
-            result["poster_url"] = row["poster_url"]
-        
-        results.append(result)
-    
-    return results
+
+    _, svd_algo, trainset = _load()
+
+    inner_ids = []
+    for movie_id in movie_ids:
+        try:
+            inner_ids.append(trainset.to_inner_iid(movie_id))
+        except ValueError:
+            continue  # Movie filtered out of the trainset
+
+    if not inner_ids:
+        return []
+
+    profile = svd_algo.qi[inner_ids].mean(axis=0)
+    scores = trainset.global_mean + svd_algo.bi + svd_algo.qi @ profile
+    lo, hi = trainset.rating_scale
+    scores = np.clip(scores, lo, hi)
+
+    # Drop the visitor's own picks, and movies too rare to score meaningfully.
+    for inner_id in inner_ids:
+        scores[inner_id] = -np.inf
+
+    top_n = min(top_n, int(np.isfinite(scores).sum()))
+    if top_n <= 0:
+        return []
+
+    top = np.argpartition(-scores, top_n - 1)[:top_n]
+    top = top[np.argsort(-scores[top])]
+
+    ranked = [(trainset.to_raw_iid(i), float(scores[i])) for i in top]
+    return _enrich(ranked, "estimated_rating", include_posters)
 
 
 def get_cold_start_recommendations(top_n: int = 10, include_posters: bool = False) -> List[Dict]:
-    """Get popularity-based recommendations for new/unknown users."""
-    data, _, _ = load_models_and_data()
-    trainset = data["train_data"].build_full_trainset()
-    
-    recs_inner = get_popularity_recommendations(trainset, n=top_n)
-    
-    # Map to raw IDs
-    mappings = joblib.load(PROCESSED_DIR / "mappings.joblib")
-    idx_to_movie = mappings["idx_to_movie"]
-    
-    recs_raw = []
-    for iid_inner, avg_rating in recs_inner:
-        movie_id = idx_to_movie.get(iid_inner)
-        if movie_id:
-            recs_raw.append((movie_id, float(avg_rating)))
-    
-    # Get metadata
-    movie_ids = [mid for mid, _ in recs_raw]
-    meta = get_movie_metadata(movie_ids)
-    
-    results = []
-    for movie_id, avg_rating in recs_raw:
-        movie_meta = meta[meta["movieId"] == movie_id]
-        if len(movie_meta) == 0:
-            continue
-        
-        row = movie_meta.iloc[0]
-        # Handle genres_list (could be numpy array or list)
-        genres = row["genres_list"]
-        if hasattr(genres, 'tolist'):
-            genres = genres.tolist()
-        elif not isinstance(genres, list):
-            genres = []
-        
-        result = {
-            "movieId": int(movie_id),
-            "title": row["clean_title"],
-            "genres": genres,
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "imdbId": f"tt{int(row['imdbId']):07d}" if pd.notna(row["imdbId"]) else None,
-            "tmdbId": int(row["tmdbId"]) if pd.notna(row["tmdbId"]) else None,
-            "average_rating": round(avg_rating, 2),
-        }
-        
-        if include_posters and row.get("poster_url"):
-            result["poster_url"] = row["poster_url"]
-        
-        results.append(result)
-    
-    return results
+    """Popularity-based recommendations for new/unknown users."""
+    _, _, trainset = _load()
+
+    ranked = get_popularity_recommendations(trainset, n=top_n)
+    return _enrich(ranked, "average_rating", include_posters)
 
 
 def get_user_rating_history(user_id: int, top_n: int = 20) -> List[Dict]:
-    """Get a user's highest-rated movies from training set."""
-    data, _, _ = load_models_and_data()
-    trainset = data["train_data"].build_full_trainset()
-    movies_clean = data["movies_clean"]
-    links = pd.read_csv(RAW_DIR / "links.csv")
-    
+    """Get a user's highest-rated movies from the training set."""
+    _, _, trainset = _load()
+
     try:
         uid_inner = trainset.to_inner_uid(user_id)
     except ValueError:
         return []
-    
-    # Get user's ratings
-    user_ratings = trainset.ur[uid_inner]
-    if not user_ratings:
-        return []
-    
-    # Sort by rating descending
-    user_ratings.sort(key=lambda x: x[1], reverse=True)
-    top_ratings = user_ratings[:top_n]
-    
-    # Map to raw IDs
-    mappings = joblib.load(PROCESSED_DIR / "mappings.joblib")
-    idx_to_movie = mappings["idx_to_movie"]
-    
+
+    user_ratings = sorted(trainset.ur[uid_inner], key=lambda x: x[1], reverse=True)[:top_n]
+
+    catalog = _movie_catalog()
     results = []
-    for iid_inner, rating in top_ratings:
-        movie_id = idx_to_movie.get(iid_inner)
-        if not movie_id:
+    for iid_inner, rating in user_ratings:
+        movie_id = trainset.to_raw_iid(iid_inner)
+        if movie_id not in catalog.index:
             continue
-        
-        movie_meta = movies_clean[movies_clean["movieId"] == movie_id]
-        if len(movie_meta) == 0:
-            continue
-        
-        row = movie_meta.iloc[0]
-        link_row = links[links["movieId"] == movie_id]
-        imdb_id = link_row.iloc[0]["imdbId"] if len(link_row) > 0 else None
-        
-        # Handle genres_list
-        genres = row["genres_list"]
-        if hasattr(genres, 'tolist'):
-            genres = genres.tolist()
-        elif not isinstance(genres, list):
-            genres = []
-        
-        result = {
-            "movieId": int(movie_id),
-            "title": row["clean_title"],
-            "genres": genres,
-            "year": int(row["year"]) if pd.notna(row["year"]) else None,
-            "imdbId": f"tt{int(imdb_id):07d}" if pd.notna(imdb_id) else None,
-            "rating": float(rating),
-        }
+        result = _build_result(catalog.loc[movie_id], float(rating), "estimated_rating", False)
+        result["rating"] = result.pop("estimated_rating")
         results.append(result)
-    
+
     return results
 
 
 if __name__ == "__main__":
-    # Test recommendations
-    print("Testing recommendations for user 1...")
-    recs = get_user_recommendations_with_metadata(1, "svd", top_n=5)
-    for r in recs:
-        print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - Genres: {r['genres']}")
-    
-    print("\nTesting cold start recommendations...")
-    cold = get_cold_start_recommendations(5)
-    for r in cold:
-        print(f"  {r['title']} ({r['year']}) - Avg: {r['average_rating']} - Genres: {r['genres']}")
-    
-    print("\nTesting user 1 rating history...")
-    history = get_user_rating_history(1, top_n=5)
-    for r in history:
-        print(f"  {r['title']} ({r['year']}) - Rating: {r['rating']} - Genres: {r['genres']}")
+    print("User 1 (SVD):")
+    for r in get_user_recommendations_with_metadata(1, "svd", top_n=5):
+        print(f"  {r['title']} ({r['year']}) - Est: {r['estimated_rating']} - {r['genres']}")
+
+    print("\nCold start:")
+    for r in get_cold_start_recommendations(5):
+        print(f"  {r['title']} ({r['year']}) - Avg: {r['average_rating']} - {r['genres']}")
+
+    print("\nUser 1 history:")
+    for r in get_user_rating_history(1, top_n=5):
+        print(f"  {r['title']} ({r['year']}) - Rating: {r['rating']} - {r['genres']}")

@@ -12,7 +12,6 @@ from .preprocessing import (
 )
 from .recommender import (
     train_svd,
-    train_knn,
     evaluate_model,
     get_top_n_recommendations,
     get_popularity_recommendations,
@@ -22,17 +21,20 @@ from .recommender import (
     load_models_and_data,
 )
 from .evaluation import (
+    rank_candidates,
     precision_recall_at_k,
     coverage,
     novelty,
     evaluate_recommender,
-    compare_models,
-    popularity_baseline_recommendations,
+    PopularityBaseline,
+    save_metrics,
+    load_metrics,
 )
 from .recommendation_engine import (
     get_user_recommendations_with_metadata,
     get_cold_start_recommendations,
     get_user_rating_history,
+    get_simulated_user_recommendations,
     set_omdb_api_key,
     fetch_poster_omdb,
 )
@@ -50,7 +52,6 @@ __all__ = [
     "run_preprocessing_pipeline",
     "load_preprocessed_data",
     "train_svd",
-    "train_knn",
     "evaluate_model",
     "get_top_n_recommendations",
     "get_popularity_recommendations",
@@ -58,15 +59,18 @@ __all__ = [
     "load_model",
     "train_and_save_models",
     "load_models_and_data",
+    "rank_candidates",
     "precision_recall_at_k",
     "coverage",
     "novelty",
     "evaluate_recommender",
-    "compare_models",
-    "popularity_baseline_recommendations",
+    "PopularityBaseline",
+    "save_metrics",
+    "load_metrics",
     "get_user_recommendations_with_metadata",
     "get_cold_start_recommendations",
     "get_user_rating_history",
+    "get_simulated_user_recommendations",
     "set_omdb_api_key",
     "fetch_poster_omdb",
 ]

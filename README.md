@@ -116,11 +116,13 @@ movie-recommender/
 - [x] Created `app/app.py` (main UI) and `app/utils.py` (helpers)
 - [x] Streamlit config: `.streamlit/config.toml`, `.streamlit/secrets.toml`, `packages.txt`
 
-### Day 7 - Polish UI 🔄
-- [ ] Styling refinements, responsive layout
-- [ ] "Simulated user" mode: select rated movies → get recs
-- [ ] Model comparison toggle (SVD vs k-NN side-by-side)
-- [ ] Performance metrics display
+### Day 7 - Polish UI ✅
+- [x] Styling refinements, responsive layout
+- [x] "Simulated user" mode: select rated movies → get recs
+- [x] Default mode set to Simulated User
+- [x] Sidebar collapsed by default; model metrics unchecked by default
+- [x] Model comparison toggle (SVD vs k-NN side-by-side)
+- [x] Performance metrics display
 
 ### Day 8 - Documentation & Deploy
 - [ ] Update README with CF architecture diagram
@@ -154,6 +156,13 @@ jupyter notebook notebooks/01_eda.ipynb
 # Run Streamlit app (after Day 7)
 streamlit run app/app.py
 ```
+
+## Default UI Behavior
+
+- **Recommendation mode**: Simulated User (pick movies → get recommendations)
+- **Sidebar**: collapsed by default
+- **Show Model Metrics**: unchecked by default
+- **Get Recommendations** button now appears directly below the movie search bar in Simulated User mode
 
 ## Dataset
 

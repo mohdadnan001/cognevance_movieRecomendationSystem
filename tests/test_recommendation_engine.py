@@ -1,130 +1,104 @@
-"""Tests for recommendation engine module."""
+"""Tests for the recommendation engine module."""
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from recommendation_engine import (
-    get_user_recommendations_with_metadata,
     get_cold_start_recommendations,
+    get_simulated_user_recommendations,
     get_user_rating_history,
+    get_user_recommendations_with_metadata,
 )
 
 
 def test_user_recommendations_svd():
-    """Test SVD recommendations for known user."""
     recs = get_user_recommendations_with_metadata(1, "svd", top_n=10)
-    
-    assert isinstance(recs, list)
-    assert len(recs) <= 10
-    assert len(recs) > 0
-    
+
+    assert 0 < len(recs) <= 10
     for r in recs:
-        assert "movieId" in r
-        assert "title" in r
-        assert "genres" in r
-        assert "year" in r
-        assert "estimated_rating" in r
+        assert {"movieId", "title", "genres", "year", "estimated_rating"} <= r.keys()
         assert isinstance(r["genres"], list)
-        assert 1 <= r["estimated_rating"] <= 5
+        assert 0.5 <= r["estimated_rating"] <= 5.0
 
 
-def test_user_recommendations_knn():
-    """Test k-NN recommendations for known user."""
-    recs = get_user_recommendations_with_metadata(1, "knn", top_n=10)
-    
-    assert isinstance(recs, list)
-    assert len(recs) <= 10
-    assert len(recs) > 0
-    
-    for r in recs:
-        assert "estimated_rating" in r
-        assert 1 <= r["estimated_rating"] <= 5
+def test_recommendations_are_personalised():
+    """Two users with different histories should not get identical lists."""
+    recs_1 = get_user_recommendations_with_metadata(1, "svd", top_n=10)
+    recs_2 = get_user_recommendations_with_metadata(1, "svd", top_n=10)
+    assert [r["movieId"] for r in recs_1] == [r["movieId"] for r in recs_2]
+
+    recs_other = get_user_recommendations_with_metadata(42, "svd", top_n=10)
+    assert [r["movieId"] for r in recs_1] != [r["movieId"] for r in recs_other]
 
 
 def test_user_recommendations_popularity():
-    """Test popularity baseline recommendations."""
+    """model_name='popularity' is the documented cold-start path."""
     recs = get_user_recommendations_with_metadata(1, "popularity", top_n=10)
-    
-    assert isinstance(recs, list)
-    assert len(recs) <= 10
-    assert len(recs) > 0
-    
+
+    assert 0 < len(recs) <= 10
     for r in recs:
-        assert "estimated_rating" in r  # Unified field name
-        assert 1 <= r["estimated_rating"] <= 5
+        assert 0.5 <= r["estimated_rating"] <= 5.0
 
 
 def test_invalid_model():
-    """Test that invalid model name raises error."""
-    try:
-        get_user_recommendations_with_metadata(1, "invalid_model", top_n=5)
-        assert False, "Should have raised ValueError"
-    except ValueError:
-        pass
+    with pytest.raises(ValueError):
+        get_user_recommendations_with_metadata(1, "knn", top_n=5)
 
 
 def test_cold_start_recommendations():
-    """Test cold start (popularity) recommendations."""
     recs = get_cold_start_recommendations(top_n=10)
-    
-    assert isinstance(recs, list)
-    assert len(recs) <= 10
-    assert len(recs) > 0
-    
+
+    assert 0 < len(recs) <= 10
     for r in recs:
-        assert "movieId" in r
-        assert "title" in r
-        assert "genres" in r
-        assert "average_rating" in r
+        assert {"movieId", "title", "genres", "average_rating"} <= r.keys()
         assert isinstance(r["genres"], list)
 
 
 def test_user_rating_history():
-    """Test user rating history retrieval."""
     hist = get_user_rating_history(1, top_n=20)
-    
-    assert isinstance(hist, list)
-    assert len(hist) <= 20
-    assert len(hist) > 0
-    
+
+    assert 0 < len(hist) <= 20
     for r in hist:
-        assert "movieId" in r
-        assert "title" in r
-        assert "genres" in r
-        assert "rating" in r
+        assert {"movieId", "title", "genres", "rating"} <= r.keys()
         assert isinstance(r["genres"], list)
         assert 0.5 <= r["rating"] <= 5.0
-    
-    # Check sorted by rating descending
+
     ratings = [r["rating"] for r in hist]
     assert ratings == sorted(ratings, reverse=True)
 
 
+def test_simulated_user_recommendations():
+    """Selections drive the recommendations and are not recommended back."""
+    selected = [1, 2, 3]  # Toy Story, Jumanji, Grumpier Old Men
+    recs = get_simulated_user_recommendations(selected, top_n=10)
+
+    assert 0 < len(recs) <= 10
+    assert set(selected).isdisjoint({r["movieId"] for r in recs})
+    assert [r["estimated_rating"] for r in recs] == sorted(
+        (r["estimated_rating"] for r in recs), reverse=True
+    )
+
+
+def test_simulated_user_unknown_movies():
+    assert get_simulated_user_recommendations([], top_n=10) == []
+    assert get_simulated_user_recommendations([10**9], top_n=10) == []
+
+
 def test_unknown_user_recommendations():
-    """Test recommendations for unknown user (cold start)."""
-    recs = get_user_recommendations_with_metadata(99999, "svd", top_n=10)
-    assert recs == []
+    assert get_user_recommendations_with_metadata(99999, "svd", top_n=10) == []
 
 
 def test_unknown_user_history():
-    """Test rating history for unknown user."""
-    hist = get_user_rating_history(99999, top_n=10)
-    assert hist == []
+    assert get_user_rating_history(99999, top_n=10) == []
 
 
 def test_recommendations_have_metadata():
-    """Test that recommendations include all required metadata fields."""
-    recs = get_user_recommendations_with_metadata(1, "svd", top_n=5)
-    
-    required_fields = {"movieId", "title", "genres", "year", "imdbId", "tmdbId", "estimated_rating"}
-    
-    for r in recs:
-        assert required_fields.issubset(r.keys())
+    required = {"movieId", "title", "genres", "year", "imdbId", "tmdbId", "estimated_rating"}
+
+    for r in get_user_recommendations_with_metadata(1, "svd", top_n=5):
+        assert required.issubset(r.keys())
         assert r["movieId"] > 0
-        assert r["title"] is not None and len(r["title"]) > 0
-
-
-if __name__ == "__main__":
-    import pytest
-    pytest.main([__file__, "-v"])
+        assert r["title"]
