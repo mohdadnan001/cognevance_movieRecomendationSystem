@@ -11,6 +11,70 @@ Collaborative filtering movie recommendation system built with Python, pandas, s
 | **Stack** | Python, pandas, scikit-learn, scikit-surprise, Streamlit, OMDb API |
 | **Deployment** | Streamlit Community Cloud |
 
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Data["Data Layer"]
+        A[movies.csv]:::file
+        B[ratings.csv]:::file
+        C[links.csv]:::file
+        D[tags.csv]:::file
+    end
+
+    subgraph Preprocessing["Preprocessing (src/preprocessing.py)"]
+        E[clean_movies]:::proc
+        F[filter_ratings ≥5]:::proc
+        G[user-item matrix]:::proc
+        H[train/test split]:::proc
+    end
+
+    subgraph Training["Model Training (src/recommender.py)"]
+        I[SVD GridSearchCV]:::model
+    end
+
+    subgraph Evaluation["Evaluation (src/evaluation.py)"]
+        J[RMSE / MAE]:::metric
+        K[Precision@K / Recall@K]:::metric
+        L[Coverage@K / Novelty@K]:::metric
+    end
+
+    subgraph Engine["Recommendation Engine (src/recommendation_engine.py)"]
+        M[SVD recommendations]:::engine
+        N[Cold-start popularity]:::engine
+        O[Simulated user profile]:::engine
+        P[OMDb posters]:::engine
+    end
+
+    subgraph UI["Streamlit UI (app/app.py)"]
+        Q[User ID mode]:::ui
+        R[Simulated User mode]:::ui
+        S[Popular / Cold Start]:::ui
+    end
+
+    A & B & C & D --> E --> F --> G --> H --> I
+    I --> J & K & L
+    I --> M & N & O
+    M --> P
+    M & N & O --> Q & R & S
+
+    classDef file fill:#e1f5e1,stroke:#2e7d32,stroke-width:2px
+    classDef proc fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef model fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef metric fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef engine fill:#e8eaf6,stroke:#303f9f,stroke-width:2px
+    classDef ui fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+```
+
+Pipeline stages (each with a matching notebook in `notebooks/`):
+
+1. `src/data_loader.py` — reads the four MovieLens CSVs from `data/raw/*.csv`; parquet helpers for `data/processed/`.
+2. `src/preprocessing.py` — clean movies, filter ≥5 ratings per user/movie, build sparse user-item matrix + mappings, train/test split, save artifacts.
+3. `src/recommender.py` — SVD `GridSearchCV` training, persists best estimator to `data/processed/models/`.
+4. `src/evaluation.py` — RMSE/MAE plus Precision@K, Recall@K, Coverage@K, Novelty@K, and popularity baseline.
+5. `src/recommendation_engine.py` — metadata enrichment, OMDb posters, cold-start and simulated-user helpers.
+6. `app/app.py` + `app/utils.py` — Streamlit UI (3 modes: User ID / Simulated User / Popular).
+
 ## Project Structure
 
 ```
@@ -125,9 +189,9 @@ movie-recommender/
 - [x] Performance metrics display
 
 ### Day 8 - Documentation & Deploy
-- [ ] Update README with CF architecture diagram
-- [ ] Record demo GIF
-- [ ] Deploy to Streamlit Community Cloud
+- [x] Update README with CF architecture diagram
+- [ ] Record demo GIF (manual)
+- [x] Deploy to Streamlit Community Cloud (docs added; deploy via share.streamlit.io)
 
 ### Day 9 - Stretch Goals
 - [ ] Content-based features (genres, TF-IDF on overviews via TMDB)
@@ -163,6 +227,37 @@ streamlit run app/app.py
 - **Sidebar**: collapsed by default
 - **Show Model Metrics**: unchecked by default
 - **Get Recommendations** button now appears directly below the movie search bar in Simulated User mode
+
+## Deployment — Streamlit Community Cloud
+
+### Prerequisites (already present)
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `requirements.txt` | Python dependencies | ✅ |
+| `packages.txt` | System-level dependencies | ✅ |
+| `.streamlit/config.toml` | Dark theme, port 8501 | ✅ |
+| `.streamlit/secrets.toml` | `OMDB_API_KEY` (gitignored) | ⚠️ add in Cloud UI |
+
+### Steps to deploy
+
+1. Push this repo to GitHub (done — `origin` → `mohdadnan001/cognevance_movieRecomendationSystem`).
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+3. Click **New app** and select:
+   - **Repository**: `mohdadnan001/cognevance_movieRecomendationSystem`
+   - **Branch**: `main`
+   - **Main file path**: `cognevance_movieRecomendationSystem/app/app.py`
+4. In **Advanced settings**, add the secret under **Secrets**:
+   ```toml
+   OMDB_API_KEY = "your-omdb-api-key"
+   ```
+5. Click **Deploy**. The app builds from `requirements.txt` + `packages.txt` and runs on Streamlit Cloud.
+
+### Notes
+
+- `data/processed/` artifacts (`mappings.joblib`, `trainset.joblib`, `algo_svd.pkl`, `metrics.json`) are **gitignored** and not deployed. On a fresh Cloud build, run preprocessing + training first, or commit the processed artifacts if you want them bundled.
+- The `enableCORS=false` warning in `config.toml` is expected (overridden by `enableXsrfProtection=true`).
+- Posters fall back to placeholder images if `OMDB_API_KEY` is not set.
 
 ## Dataset
 
