@@ -16,40 +16,40 @@ Collaborative filtering movie recommendation system built with Python, pandas, s
 ```mermaid
 flowchart TD
     subgraph Data["Data Layer"]
-        A[movies.csv]:::file
-        B[ratings.csv]:::file
-        C[links.csv]:::file
-        D[tags.csv]:::file
+        A["movies.csv"]:::file
+        B["ratings.csv"]:::file
+        C["links.csv"]:::file
+        D["tags.csv"]:::file
     end
 
     subgraph Preprocessing["Preprocessing (src/preprocessing.py)"]
-        E[clean_movies]:::proc
-        F[filter_ratings ≥5]:::proc
-        G[user-item matrix]:::proc
-        H[train/test split]:::proc
+        E["clean_movies"]:::proc
+        F["filter_ratings ≥5"]:::proc
+        G["user-item matrix"]:::proc
+        H["train/test split"]:::proc
     end
 
     subgraph Training["Model Training (src/recommender.py)"]
-        I[SVD GridSearchCV]:::model
+        I["SVD GridSearchCV"]:::model
     end
 
     subgraph Evaluation["Evaluation (src/evaluation.py)"]
-        J[RMSE / MAE]:::metric
-        K[Precision@K / Recall@K]:::metric
-        L[Coverage@K / Novelty@K]:::metric
+        J["RMSE / MAE"]:::metric
+        K["Precision@K / Recall@K"]:::metric
+        L["Coverage@K / Novelty@K"]:::metric
     end
 
     subgraph Engine["Recommendation Engine (src/recommendation_engine.py)"]
-        M[SVD recommendations]:::engine
-        N[Cold-start popularity]:::engine
-        O[Simulated user profile]:::engine
-        P[OMDb posters]:::engine
+        M["SVD recommendations"]:::engine
+        N["Cold-start popularity"]:::engine
+        O["Simulated user profile"]:::engine
+        P["OMDb posters"]:::engine
     end
 
     subgraph UI["Streamlit UI (app/app.py)"]
-        Q[User ID mode]:::ui
-        R[Simulated User mode]:::ui
-        S[Popular / Cold Start]:::ui
+        Q["User ID mode"]:::ui
+        R["Simulated User mode"]:::ui
+        S["Popular / Cold Start"]:::ui
     end
 
     A & B & C & D --> E --> F --> G --> H --> I
