@@ -11,6 +11,9 @@ Collaborative filtering movie recommendation system built with Python, pandas, s
 | **Stack** | Python, pandas, scikit-learn, scikit-surprise, Streamlit, OMDb API |
 | **Deployment** | Streamlit Community Cloud |
 
+## Demo
+<img width="2121" height="1286" alt="ezgif-optimized" src="https://github.com/user-attachments/assets/ef4f3af0-19a4-4534-b820-6ea1c8f590a7" />
+
 ## Architecture
 
 ```mermaid
