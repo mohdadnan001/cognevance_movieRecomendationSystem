@@ -191,18 +191,6 @@ movie-recommender/
 ### Day 8 - Documentation & Deploy
 - [x] Update README with CF architecture diagram
 - [ ] Record demo GIF (manual)
-- [x] Deploy to Streamlit Community Cloud (docs added; deploy via share.streamlit.io)
-
-### Day 9 - Stretch Goals
-- [ ] Content-based features (genres, TF-IDF on overviews via TMDB)
-- [ ] Hybrid recommender (weighted CF + content)
-- [ ] Create `cf-hybrid` branch
-
-### Day 10 - Advanced (Optional)
-- [ ] Implicit feedback ALS via `implicit` library
-- [ ] Neural CF with PyTorch
-- [ ] A/B testing framework
-- [ ] Docker containerization
 
 ## Quick Start
 
@@ -227,37 +215,6 @@ streamlit run app/app.py
 - **Sidebar**: collapsed by default
 - **Show Model Metrics**: unchecked by default
 - **Get Recommendations** button now appears directly below the movie search bar in Simulated User mode
-
-## Deployment — Streamlit Community Cloud
-
-### Prerequisites (already present)
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `requirements.txt` | Python dependencies | ✅ |
-| `packages.txt` | System-level dependencies | ✅ |
-| `.streamlit/config.toml` | Dark theme, port 8501 | ✅ |
-| `.streamlit/secrets.toml` | `OMDB_API_KEY` (gitignored) | ⚠️ add in Cloud UI |
-
-### Steps to deploy
-
-1. Push this repo to GitHub (done — `origin` → `mohdadnan001/cognevance_movieRecomendationSystem`).
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
-3. Click **New app** and select:
-   - **Repository**: `mohdadnan001/cognevance_movieRecomendationSystem`
-   - **Branch**: `main`
-   - **Main file path**: `cognevance_movieRecomendationSystem/app/app.py`
-4. In **Advanced settings**, add the secret under **Secrets**:
-   ```toml
-   OMDB_API_KEY = "your-omdb-api-key"
-   ```
-5. Click **Deploy**. The app builds from `requirements.txt` + `packages.txt` and runs on Streamlit Cloud.
-
-### Notes
-
-- `data/processed/` artifacts (`mappings.joblib`, `trainset.joblib`, `algo_svd.pkl`, `metrics.json`) are **gitignored** and not deployed. On a fresh Cloud build, run preprocessing + training first, or commit the processed artifacts if you want them bundled.
-- The `enableCORS=false` warning in `config.toml` is expected (overridden by `enableXsrfProtection=true`).
-- Posters fall back to placeholder images if `OMDB_API_KEY` is not set.
 
 ## Dataset
 
