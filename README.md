@@ -6,7 +6,7 @@ Collaborative filtering movie recommendation system built with Python, pandas, s
 
 | Aspect | Details |
 |--------|---------|
-| **Approach** | Collaborative Filtering (SVD / k-NN on user-item matrix) |
+| **Approach** | Collaborative Filtering (SVD ) |
 | **Dataset** | MovieLens ml-latest-small (9,742 movies, 100,836 ratings, 610 users) |
 | **Stack** | Python, pandas, scikit-learn, scikit-surprise, Streamlit, OMDb API |
 | **Deployment** | Streamlit Community Cloud |
@@ -190,7 +190,7 @@ movie-recommender/
 
 ### Day 8 - Documentation & Deploy
 - [x] Update README with CF architecture diagram
-- [ ] Record demo GIF (manual)
+- [ ] Record demo GIF 
 
 ## Quick Start
 
