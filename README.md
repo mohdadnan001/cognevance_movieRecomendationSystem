@@ -1,6 +1,18 @@
+<p align="center">
+  <a href="https://adnanmovierecomendationsystem.streamlit.app/">
+    <img src="https://img.shields.io/badge/Live_Demo-Open_App-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Open the live demo">
+  </a>
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ef4f3af0-19a4-4534-b820-6ea1c8f590a7" alt="Movie Recommender demo" width="100%">
+</p>
+
 # Movie Recommender System
 
 Collaborative filtering movie recommendation system built with Python, pandas, scikit-learn, scikit-surprise, and Streamlit. Uses MovieLens ml-latest-small dataset.
+
+**Live demo:** [adnanmovierecomendationsystem.streamlit.app](https://adnanmovierecomendationsystem.streamlit.app/)
 
 ## Project Overview
 
@@ -193,7 +205,7 @@ movie-recommender/
 
 ### Day 8 - Documentation & Deploy
 - [x] Update README with CF architecture diagram
-- [ ] Record demo GIF 
+- [ ] Record demo GIF
 
 ## Quick Start
 
